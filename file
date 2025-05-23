@@ -1,0 +1,84 @@
+Generate production standard helm chart for the project "catos-application-minestarportal", which is currently deployed using below mentioned dockerfile and dockercompose file.
+
+Generate all the helm chart files separately make sure all the services mentioned in dockercompose.yml are deployed and interaction between them is taken care.
+
+
+Dockerfile: src/services/config-platform-service/Dockerfile
+
+# Build stage
+FROM amazoncorretto:21-alpine3.21-full AS builder
+WORKDIR /build
+COPY target/portal-config-platform-service-*.jar application.jar
+RUN java -Djarmode=layertools -jar application.jar extract
+
+# Run stage
+FROM amazoncorretto:21-alpine3.21-full
+LABEL maintainer="Mine Squad"
+LABEL description="MineStar Portal Config Platform Service"
+
+# Add app user
+RUN adduser --no-create-home -u 1000 -D appuser && \
+    mkdir /app && \
+    chown -R appuser:appuser /app
+
+WORKDIR /app
+
+# Copy layers from builder
+COPY --from=builder --chown=appuser:appuser /build/dependencies/ ./
+COPY --from=builder --chown=appuser:appuser /build/spring-boot-loader/ ./
+COPY --from=builder --chown=appuser:appuser /build/snapshot-dependencies/ ./
+COPY --from=builder --chown=appuser:appuser /build/application/ ./
+
+# Configure container
+USER appuser
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/portal-config-platform/actuator/health || exit 1
+
+ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
+
+Dockercompose.yml: 
+
+services:
+  localhost:
+    image: alpine:latest
+    command: sleep infinity
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "4200:4200"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1.4
+    container_name: keycloak
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - ./realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: true
+      KC_HOSTNAME_STRICT: false
+    command:
+      - start-dev
+      - --import-realm
+    network_mode: "service:localhost"
+
+  siteportal_config_platform_service:
+    image: siteportal-config-platform-service:261176
+    container_name: minestar
+    depends_on:
+      - keycloak
+    network_mode: "service:localhost"
+
+  siteportal_gui:
+    image: siteportal-gui:261957
+    container_name: catos-gui-minestarportal
+    depends_on:
+      - siteportal_config_platform_service
+    network_mode: "service:localhost"
+
+volumes:
+  keycloak_data:
+    name: keycloak_data
