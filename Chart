@@ -1,0 +1,85 @@
+catos-application-minestarportal/ ├── Chart.yaml ├── values.yaml ├── templates/ │   ├── alpine-dummy-deployment.yaml │   ├── alpine-dummy-service.yaml │   ├── keycloak-deployment.yaml │   ├── keycloak-service.yaml │   ├── config-platform-deployment.yaml │   ├── config-platform-service.yaml │   ├── gui-deployment.yaml │   ├── gui-service.yaml │   └── keycloak-realm-configmap.yaml
+
+
+---
+
+Chart.yaml
+
+apiVersion: v2 name: catos-application-minestarportal description: Helm chart for MineStar Portal version: 0.1.0 appVersion: "1.0"
+
+
+---
+
+values.yaml
+
+alpine: image: alpine:latest ports: - 8080 - 8081 - 4200
+
+keycloak: image: quay.io/keycloak/keycloak:26.1.4 adminUser: admin adminPassword: admin realmImport: "realm-export.json"
+
+configPlatform: image: siteportal-config-platform-service:261176 port: 8080
+
+gui: image: siteportal-gui:261957 port: 4200
+
+
+---
+
+templates/alpine-dummy-deployment.yaml
+
+apiVersion: apps/v1 kind: Deployment metadata: name: dummy-alpine spec: replicas: 1 selector: matchLabels: app: dummy-alpine template: metadata: labels: app: dummy-alpine spec: containers: - name: dummy-alpine image: {{ .Values.alpine.image }} command: ["sleep", "infinity"] ports: {{- range .Values.alpine.ports }} - containerPort: {{ . }} {{- end }}
+
+
+---
+
+templates/alpine-dummy-service.yaml
+
+apiVersion: v1 kind: Service metadata: name: dummy-alpine spec: selector: app: dummy-alpine ports: {{- range .Values.alpine.ports }} - port: {{ . }} targetPort: {{ . }} {{- end }}
+
+
+---
+
+templates/keycloak-deployment.yaml
+
+apiVersion: apps/v1 kind: Deployment metadata: name: keycloak spec: replicas: 1 selector: matchLabels: app: keycloak template: metadata: labels: app: keycloak spec: containers: - name: keycloak image: {{ .Values.keycloak.image }} args: ["start-dev", "--import-realm"] env: - name: KC_BOOTSTRAP_ADMIN_USERNAME value: {{ .Values.keycloak.adminUser }} - name: KC_BOOTSTRAP_ADMIN_PASSWORD value: {{ .Values.keycloak.adminPassword }} - name: KC_HTTP_ENABLED value: "true" - name: KC_HOSTNAME_STRICT value: "false" volumeMounts: - name: realm-volume mountPath: /opt/keycloak/data/import readOnly: true volumes: - name: realm-volume configMap: name: keycloak-realm
+
+
+---
+
+templates/keycloak-service.yaml
+
+apiVersion: v1 kind: Service metadata: name: keycloak spec: selector: app: keycloak ports: - port: 8080 targetPort: 8080
+
+
+---
+
+templates/config-platform-deployment.yaml
+
+apiVersion: apps/v1 kind: Deployment metadata: name: config-platform spec: replicas: 1 selector: matchLabels: app: config-platform template: metadata: labels: app: config-platform spec: containers: - name: config-platform image: {{ .Values.configPlatform.image }} ports: - containerPort: {{ .Values.configPlatform.port }} readinessProbe: httpGet: path: /portal-config-platform/actuator/health port: {{ .Values.configPlatform.port }} initialDelaySeconds: 10 periodSeconds: 30
+
+
+---
+
+templates/config-platform-service.yaml
+
+apiVersion: v1 kind: Service metadata: name: config-platform spec: selector: app: config-platform ports: - port: 8080 targetPort: 8080
+
+
+---
+
+templates/gui-deployment.yaml
+
+apiVersion: apps/v1 kind: Deployment metadata: name: gui spec: replicas: 1 selector: matchLabels: app: gui template: metadata: labels: app: gui spec: containers: - name: gui image: {{ .Values.gui.image }} ports: - containerPort: {{ .Values.gui.port }}
+
+
+---
+
+templates/gui-service.yaml
+
+apiVersion: v1 kind: Service metadata: name: gui spec: selector: app: gui ports: - port: 4200 targetPort: 4200
+
+
+---
+
+templates/keycloak-realm-configmap.yaml
+
+apiVersion: v1 kind: ConfigMap metadata: name: keycloak-realm binaryData: realm-export.json: "<base64-encoded-realm-export.json-contents>"
+
