@@ -1,0 +1,157 @@
+the below pipeline fails at "Tar File creation" stage, looks like it's unable to tar multiple multiple docker images with the help of docker_build.yml template.
+review the pipeline and docker_build.yml template and apply fix to the pipeline and generate a pipeline with all the fix.
+
+Pls make sure that changes to docker_build.yml template is not permitted 
+
+Error:
+Tar File creation
+
+View raw log
+
+Starting: Tar File creation
+==============================================================================
+Task         : Command line
+Description  : Run a command line script using Bash on Linux and macOS and cmd.exe on Windows
+Version      : 2.250.1
+Author       : Microsoft Corporation
+Help         : https://docs.microsoft.com/azure/devops/pipelines/tasks/utility/command-line
+==============================================================================
+Generating script.
+========================== Starting Command Output ===========================
+/usr/bin/bash --noprofile --norc /home/vsts/work/_temp/44a83ae1-a38f-4c6a-94da-b66e84a00124.sh
+Taring the image
+REPOSITORY   TAG       IMAGE ID   CREATED   SIZE
+docker: 'docker save' requires at least 1 argument
+
+Usage:  docker save [OPTIONS] IMAGE [IMAGE...]
+
+See 'docker save --help' for more information
+
+##[error]Bash exited with code '1'.
+Finishing: Tar File creation
+
+
+current pipeline:
+trigger:
+  branches:
+    include:
+      - main
+
+parameters:
+  - name: Options
+    type: string
+    default: "-Pbuild-image -Pbuild-base-image"
+  - name: MavenGoal
+    type: string
+    default: "package"
+    values:
+      - verify
+      - package
+  - name: AppImages
+    type: object
+    default:
+      - "truck-production-states"
+      - "message-refinement"
+      - "message-extraction"
+      - "data-ingestion"
+      - "bootstrap"
+      - "base-image"
+
+variables:
+  RegionName: 'us-east-2'
+  DevRoleARN: 'arn:aws:iam::731342835564:role/cat-os-dev-Cfn-role'
+  DevAWSCredentials: 'azdo-cfn-cat-os-dev-useast2'
+  DevECRRepoName: 'cat-os-data-platform-repo'
+  imageTag: "latest"
+
+resources:
+  repositories:
+    - repository: DevopsRepo
+      type: git
+      name: Cat OS Platform/pfm-DevOpsTemplates
+      ref: refs/heads/main
+      checkout:
+        clean: true
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- stage: BuildDataPlatform
+  displayName: 'Build Data Platform'
+  jobs:
+    - job: BuildDataPlatform
+      displayName: 'Build Data Platform'
+      steps:
+        - template: MasterTemplates/java/Java_Build.yml@DevopsRepo
+          parameters:
+            enableSonarQube: 'true'
+            pomfilepath: 'src/pom.xml'
+            javaversion: 17
+            mavengoals: '${{ parameters.MavenGoal }} ${{ parameters.Options }}'
+
+        - script: |
+            echo "Displaying all local Docker images:"
+            docker images
+          displayName: "Display Docker Images"
+
+        - template: MasterTemplates/Docker/Docker_Build.yml@DevopsRepo
+          parameters:
+            docker_images:
+              - name: "dataplatform/truck-production-states"
+              - name: "dataplatform/message-refinement"
+              - name: "dataplatform/message-extraction"
+              - name: "dataplatform/data-ingestion-spring"
+              - name: "dataplatform/bootstrap"
+              - name: "dataplatform/base-image"
+            buildImage: false
+            tag: "latest"
+
+        - task: PublishBuildArtifacts@1
+          inputs:
+            PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+            ArtifactName: 'AppImages'
+            publishLocation: 'Container'
+          enabled: true
+
+docker_build.yml template:
+
+parameters:
+  - name: docker_images #the image properties like image name, dockerfile path, arguments to be passed
+    type: object
+  - name: buildImage #By default this value is set to true. It can be set to false, if required.
+    type: boolean 
+    default: true
+  - name: tag #by default image tag is build id. This can be override as required. 
+    type: string
+    default: $(Build.BuildId)
+  - name: PrismaCloudComputeServiceConnection #by default image tag is build id. This can be override as required. 
+    type: string
+    default: 'catos-prisma-compute-scan'
+
+steps:  
+
+  - ${{ each docker_image in parameters.docker_images }}:
+    - task: "Docker@2"
+      displayName: "Docker Build : ${{ docker_image.name }}"
+      inputs:
+        repository: "${{ docker_image.name }}"
+        tags: '${{ parameters.tag }}'
+        command: "build"
+        dockerfile: "${{ docker_image.DockerFilePath }}/Dockerfile"
+        buildContext: "${{ docker_image.DockerFilePath }}"
+        arguments: "${{ docker_image.arguments }}"
+      enabled: '${{ parameters.buildImage }}'
+
+    - task: prisma-cloud-compute-scan@3
+      displayName: 'Prisma Compute Scan : ${{ docker_image.name }}'
+      inputs:
+        scanType: 'images'
+        twistlockService: ${{ parameters.PrismaCloudComputeServiceConnection }}
+        artifact: '${{ docker_image.name }}:${{ parameters.tag }}'
+
+  - script: |
+      echo "Taring the image"
+      docker images --filter "reference=*:${{ parameters.tag }}"
+      docker save -o $(Build.ArtifactStagingDirectory)/docker-images.tar $(docker images -q --filter "reference=*:${{ parameters.tag }}" --format '{{.Repository}}:{{.Tag}}')
+    displayName: 'Tar File creation'
