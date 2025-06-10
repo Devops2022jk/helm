@@ -1,0 +1,93 @@
+trigger:
+  branches:
+    include:
+      - main
+
+parameters:
+  - name: Options
+    type: string
+    default: "-Pbuild-image -Pbuild-base-image"
+  - name: MavenGoal
+    type: string
+    default: "package"
+    values:
+      - verify
+      - package
+  - name: AppImages
+    type: object
+    default:
+      - "truck-production-states"
+      - "message-refinement"
+      - "message-extraction"
+      - "data-ingestion"
+      - "bootstrap"
+      - "base-image"
+
+variables:
+  RegionName: 'us-east-2'
+  DevRoleARN: 'arn:aws:iam::731342835564:role/cat-os-dev-Cfn-role'
+  DevAWSCredentials: 'azdo-cfn-cat-os-dev-useast2'
+  DevECRRepoName: 'cat-os-data-platform-repo'
+  imageTag: "latest"
+
+resources:
+  repositories:
+    - repository: DevopsRepo
+      type: git
+      name: Cat OS Platform/pfm-DevOpsTemplates
+      ref: refs/heads/main
+      checkout:
+        clean: true
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- stage: BuildDataPlatform
+  displayName: 'Build Data Platform'
+  jobs:
+    - job: BuildDataPlatform
+      displayName: 'Build Data Platform'
+      steps:
+        - template: MasterTemplates/java/Java_Build.yml@DevopsRepo
+          parameters:
+            enableSonarQube: 'true'
+            pomfilepath: 'src/pom.xml'
+            javaversion: 17
+            mavengoals: '${{ parameters.MavenGoal }} ${{ parameters.Options }}'
+
+        - script: |
+            echo "Displaying all local Docker images:"
+            docker images
+          displayName: "Display Docker Images"
+
+        - template: MasterTemplates/Docker/Docker_Build.yml@DevopsRepo
+          parameters:
+            docker_images:
+              - name: "dataplatform/truck-production-states"
+              - name: "dataplatform/message-refinement"
+              - name: "dataplatform/message-extraction"
+              - name: "dataplatform/data-ingestion-spring"
+              - name: "dataplatform/bootstrap"
+              - name: "dataplatform/base-image"
+            buildImage: false
+            tag: "latest"
+
+        - script: |
+            echo "Taring the images..."
+            docker save \
+              dataplatform/truck-production-states:latest \
+              dataplatform/message-refinement:latest \
+              dataplatform/message-extraction:latest \
+              dataplatform/data-ingestion-spring:latest \
+              dataplatform/bootstrap:latest \
+              dataplatform/base-image:latest \
+              -o $(Build.ArtifactStagingDirectory)/docker-images.tar
+          displayName: 'Tar File creation'
+
+        - task: PublishBuildArtifacts@1
+          inputs:
+            PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+            ArtifactName: 'AppImages'
+            publishLocation: 'Container'
+          enabled: true
