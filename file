@@ -1,84 +1,213 @@
-Generate production standard helm chart for the project "catos-application-minestarportal", which is currently deployed using below mentioned dockerfile and dockercompose file.
-
-Generate all the helm chart files separately make sure all the services mentioned in dockercompose.yml are deployed and interaction between them is taken care.
+6. Developer Workflow & Pipeline Interaction 🧑‍💻
 
 
-Dockerfile: src/services/config-platform-service/Dockerfile
 
-# Build stage
-FROM amazoncorretto:21-alpine3.21-full AS builder
-WORKDIR /build
-COPY target/portal-config-platform-service-*.jar application.jar
-RUN java -Djarmode=layertools -jar application.jar extract
+Here's how developers and release managers will interact with this setup during daily operations.
 
-# Run stage
-FROM amazoncorretto:21-alpine3.21-full
-LABEL maintainer="Mine Squad"
-LABEL description="MineStar Portal Config Platform Service"
 
-# Add app user
-RUN adduser --no-create-home -u 1000 -D appuser && \
-    mkdir /app && \
-    chown -R appuser:appuser /app
 
-WORKDIR /app
+6.1. Starting a New Feature (Developer)
 
-# Copy layers from builder
-COPY --from=builder --chown=appuser:appuser /build/dependencies/ ./
-COPY --from=builder --chown=appuser:appuser /build/spring-boot-loader/ ./
-COPY --from=builder --chown=appuser:appuser /build/snapshot-dependencies/ ./
-COPY --from=builder --chown=appuser:appuser /build/application/ ./
 
-# Configure container
-USER appuser
-EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=3s \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/portal-config-platform/actuator/health || exit 1
+Local Commands:
 
-ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
+Bash
 
-Dockercompose.yml: 
+git checkout develop
+git pull origin develop # Ensure your local develop is up-to-date
+mvn gitflow:feature-start -DfeatureName=my-awesome-feature
+# GitFlow plugin creates 'feature/my-awesome-feature' locally and switches to it.
 
-services:
-  localhost:
-    image: alpine:latest
-    command: sleep infinity
-    ports:
-      - "8080:8080"
-      - "8081:8081"
-      - "4200:4200"
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.1.4
-    container_name: keycloak
-    volumes:
-      - keycloak_data:/opt/keycloak/data
-      - ./realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
-      KC_HTTP_ENABLED: true
-      KC_HOSTNAME_STRICT: false
-    command:
-      - start-dev
-      - --import-realm
-    network_mode: "service:localhost"
+Development: Work on your feature, committing changes locally as usual.
 
-  siteportal_config_platform_service:
-    image: siteportal-config-platform-service:261176
-    container_name: minestar
-    depends_on:
-      - keycloak
-    network_mode: "service:localhost"
+Pushing Changes: Push your feature branch to Azure Repos periodically.
 
-  siteportal_gui:
-    image: siteportal-gui:261957
-    container_name: catos-gui-minestarportal
-    depends_on:
-      - siteportal_config_platform_service
-    network_mode: "service:localhost"
+Bash
 
-volumes:
-  keycloak_data:
-    name: keycloak_data
+git add .
+git commit -m "Implement part of new feature"
+git push -u origin feature/my-awesome-feature
+
+
+Pipeline Interaction:
+
+ci-pipeline.yml (triggered by push to feature/*) runs.
+
+Result: Builds and tests your feature branch code, providing continuous feedback. No pom.xml version changes on the branch.
+
+
+
+6.2. Finishing a Feature (Developer)
+
+
+
+Pull Request to Develop: Create a Pull Request (PR) from feature/my-awesome-feature to develop in Azure DevOps.
+
+Pipeline Interaction during PR:
+
+ci-pipeline.yml (triggered by PR targeting develop) runs.
+
+Result: Comprehensive builds and tests are performed, ensuring the feature is ready for integration.
+
+Merge PR: Once approved and pipeline passes, merge the PR in Azure DevOps.
+
+Local Commands (Post-Merge Cleanup):
+
+After the merge to develop on Azure Repos, you can clean up your local feature branch:
+
+Bash
+
+git checkout develop
+git pull origin develop # Get latest develop with merged feature
+git branch -d feature/my-awesome-feature # Delete local branch
+git push origin :feature/my-awesome-feature # Delete remote branch
+
+
+Alternatively, the mvn gitflow:feature-finish command can automate this local cleanup after the merge.
+
+Bash
+
+git checkout develop # Ensure you are on develop
+git pull origin develop # Ensure develop is updated
+mvn gitflow:feature-finish -B -DnoFetch=true -DnoRelease=true -DnoMerge=true -DpushRemote=true # Only deletes branch locally and remotely
+
+
+Note: We set -DnoMerge=true here because the merge happens via the Azure DevOps PR. The plugin's main role here becomes deleting the branch and pushing the updated develop (though develop would already be updated by the PR merge itself).
+
+Pipeline Interaction (Post-Merge):
+
+ci-pipeline.yml (triggered by push to develop from the PR merge) runs.
+
+Result: Builds and tests the develop branch with the new feature fully integrated.
+
+
+
+6.3. Starting a Release (Release Manager/Lead Developer)
+
+
+
+Azure DevOps UI: Go to Pipelines > Select release-start-pipeline.yml > Click Run Pipeline.
+
+Input: In the parameter field, enter the releaseVersion (e.g., 1.0.0).
+
+Pipeline Interaction (release-start-pipeline.yml runs):
+
+The pipeline checks out develop.
+
+It executes mvn gitflow:release-start -DreleaseVersion=1.0.0 -DpushRemote=true ....
+
+What happens: The plugin creates the release/1.0.0 branch from develop, changes the pom.xml version on this new branch to 1.0.0 (from 1.0.0-SNAPSHOT), and pushes this new branch and pom.xml change to Azure Repos.
+
+Pipeline Interaction (main-branch-pipeline.yml triggered):
+
+Triggered by the push of the new release/1.0.0 branch.
+
+Result: Builds and tests the release/1.0.0 branch, creating a release candidate artifact for QA.
+
+
+
+6.4. Testing the Release Branch (QA/Developers)
+
+
+
+Manual Action: QA and developers test the application built from the release/1.0.0 branch (e.g., deployed to a staging environment by main-branch-pipeline.yml).
+
+Bug Fixes (if any): Developers commit and push fixes directly to the release/1.0.0 branch.
+
+Pipeline Interaction: Each push to release/1.0.0 triggers main-branch-pipeline.yml to build and re-validate the release candidate.
+
+
+
+6.5. Finishing a Release (Release Manager/Lead Developer)
+
+
+
+Azure DevOps UI: Go to Pipelines > Select release-finish-pipeline.yml > Click Run Pipeline.
+
+Input: Enter the releaseBranchName (e.g., release/1.0.0) in the parameter field.
+
+Pipeline Interaction (release-finish-pipeline.yml runs):
+
+The pipeline checks out release/1.0.0.
+
+It executes mvn gitflow:release-finish -B -DpushRemote=true -DupdateVersionDigitToIncrement=2 ....
+
+What happens (by the plugin):
+
+Merges release/1.0.0 into main.
+
+Tags main with 1.0.0 (or your specified version).
+
+Merges release/1.0.0 into develop.
+
+Updates develop's pom.xml to 1.0.1-SNAPSHOT (due to versionDigitToIncrement=2 in pom.xml).
+
+Deletes the local and remote release/1.0.0 branch.
+
+All these changes are pushed to Azure Repos.
+
+Subsequent Pipeline Interactions:
+
+main-branch-pipeline.yml (triggered by push to main and the new tag) runs. Result: Builds and tests the now-released main branch, potentially deploying to production.
+
+ci-pipeline.yml (triggered by push to develop) runs. Result: Builds and tests the develop branch (now at 1.0.1-SNAPSHOT).
+
+
+
+6.6. Starting a Hotfix (Hotfix Manager/Lead Developer - for urgent production bugs)
+
+
+
+Azure DevOps UI: Go to Pipelines > Select hotfix-start-pipeline.yml > Click Run Pipeline.
+
+Input: Enter the hotfixVersion (e.g., 1.0.1) in the parameter field.
+
+Pipeline Interaction (hotfix-start-pipeline.yml runs):
+
+The pipeline checks out main.
+
+It executes mvn gitflow:hotfix-start -B -DhotfixVersion=1.0.1 -DpushRemote=true ....
+
+What happens: The plugin creates hotfix/1.0.1 from main, changes the pom.xml version on hotfix/1.0.1 to 1.0.1, and pushes this new branch and pom.xml change.
+
+Pipeline Interaction (main-branch-pipeline.yml triggered):
+
+Triggered by the push of the new hotfix/1.0.1 branch.
+
+Result: Builds and tests the hotfix/1.0.1 branch for the urgent fix.
+
+
+
+6.7. Finishing a Hotfix (Hotfix Manager/Lead Developer)
+
+
+
+Azure DevOps UI: Go to Pipelines > Select hotfix-finish-pipeline.yml > Click Run Pipeline.
+
+Input: Enter the hotfixBranchName (e.g., hotfix/1.0.1) in the parameter field.
+
+Pipeline Interaction (hotfix-finish-pipeline.yml runs):
+
+The pipeline checks out hotfix/1.0.1.
+
+It executes mvn gitflow:hotfix-finish -B -DpushRemote=true ....
+
+What happens (by the plugin):
+
+Merges hotfix/1.0.1 into main.
+
+Tags main with 1.0.1.
+
+Merges hotfix/1.0.1 into develop.
+
+Deletes the local and remote hotfix/1.0.1 branch.
+
+All these changes are pushed to Azure Repos.
+
+Subsequent Pipeline Interactions:
+
+main-branch-pipeline.yml (triggered by push to main and the new tag) runs. Result: Builds and tests the hotfixed main branch, potentially deploying to production.
+
+ci-pipeline.yml (triggered by push to develop) runs. Result: Builds and tests the develop branch (now including the hotfix).
