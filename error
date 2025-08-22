@@ -1,16 +1,133 @@
-CI/CD Pipeline Enhancements and Image Management
-Designed and implemented CI pipelines to build and publish Docker images to Amazon ECR, enabling automated and consistent image delivery across services.
-Helm Chart Development for Platform Services
-Developed Helm charts for portal-config-platform-service and portal-gui, facilitating standardized Kubernetes deployments and configuration management.
-Shared Schema and Artifact Dependency Pipelines
-Built pipelines for managing shared protobuf schemas and integrated support for Minestar artifact dependencies, ensuring consistency and reusability across microservices.
-SBOM Automation for Site Portal
-Implemented pipelines to generate Software Bill of Materials (SBOMs), including parent SBOM files, to enhance software supply chain visibility and compliance.
-Data Platform CI/CD Prototyping
-Prototyped integration and Python build pipelines for the Data Platform, laying the foundation for scalable and testable deployment workflows.
-Learning and Adoption of DevOps Tooling
-Gained hands-on experience with Azure DevOps Pipelines and AWS CloudFormation, contributing to infrastructure automation and pipeline development with best practices
+getting below error for the pipeline, where tag should be only latest but it's using invalid tag "dataplatform-1.0.0/dataplatform:1.0.0" fix and generate complete pipeline
+
+Login to ECR and Push Helm Chart
+
+View raw log
+
+Starting: Login to ECR and Push Helm Chart
+==============================================================================
+Task         : AWS Shell Script
+Description  : Run a shell script using Bash with AWS credentials as environment variables
+Version      : 1.22.0
+Author       : Amazon Web Services
+Help         : Runs a shell script in Bash, setting AWS credentials and region information into the shell environment using the standard environment keys _AWS_ACCESS_KEY_ID_, _AWS_SECRET_ACCESS_KEY_, _AWS_SESSION_TOKEN_ and _AWS_REGION_.
+
+More information on this task can be found in the [task reference](https://docs.aws.amazon.com/vsts/latest/userguide/awsshell.html).
+
+####Task Permissions
+Permissions for this task to call AWS service APIs depend on the activities in the supplied script.
+==============================================================================
+Configuring credentials for task
+...configuring AWS credentials from service endpoint '7d5a5470-2137-4e03-af9d-7a9ed8850877'
+...configuring AWS credentials from service endpoint '7d5a5470-2137-4e03-af9d-7a9ed8850877'
+Skipping OIDC: not enabled in service connections
+...configuring AWS credentials from service endpoint '7d5a5470-2137-4e03-af9d-7a9ed8850877'
+...endpoint defines role-based credentials for role ***.
+Configuring region for task
+...configured to use region us-east-2, defined in task.
+/usr/bin/bash /home/vsts/work/_temp/awsshellscript_2146.sh
+Logging in to AWS ECR for Helm OCI Push...
+Login Succeeded
+Logged into AWS ECR Helm OCI registry
+Pushing Helm chart dataplatform-1.0.0.tgz to oci://767397961280.dkr.ecr.us-east-2.amazonaws.com/catos-data-platform-repo:dataplatform-1.0.0
+Error: invalid reference: invalid tag "dataplatform-1.0.0/dataplatform:1.0.0"
+
+##[error]Error: The process '/usr/bin/bash' failed with exit code 1
+Finishing: Login to ECR and Push Helm Chart
 
 
-Onboarding and Independent Contribution to CAT Infrastructure
-Underwent knowledge transfer (KT) sessions to understand the CAT infrastructure and began independently working on assigned user stories and issue troubleshooting.
+pipeline:
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - production/charts/dataplatform/**
+
+parameters:
+  - name: ChartVersion
+    type: string
+    default: '1.0.0'
+    displayName: 'Helm Chart Version'
+
+variables:
+  ChartName: 'dataplatform'
+  ChartPath: 'production/charts/dataplatform'
+  AWSRegion: 'us-east-2'
+  DevAWSCredentials: 'azdo-cfn-medge-dev'
+  ECRRegistry: '767397961280.dkr.ecr.us-east-2.amazonaws.com'
+  ECRRepo: 'catos-data-platform-repo'
+  HelmPushTag: 'latest'
+
+stages:
+  - stage: package_and_push_helm_chart
+    displayName: 'Package and Push Helm Chart'
+    jobs:
+      - job: package_helm
+        displayName: 'Package and Push Helm Chart'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+
+          # Install Helm CLI
+          - task: Bash@3
+            displayName: 'Install Helm CLI'
+            inputs:
+              targetType: 'inline'
+              script: |
+                set -e
+                echo "Installing Helm CLI..."
+                curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+                helm version
+
+          # Install AWS CLI
+          - task: Bash@3
+            displayName: 'Install AWS CLI'
+            inputs:
+              targetType: 'inline'
+              script: |
+                set -e
+                echo "Installing AWS CLI..."
+                curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                unzip awscliv2.zip
+                sudo ./aws/install --update
+                aws --version
+
+          # Package Helm Chart
+          - task: Bash@3
+            displayName: 'Package Helm Chart'
+            inputs:
+              targetType: 'inline'
+              script: |
+                set -e
+                echo "Packaging Helm chart from $(System.DefaultWorkingDirectory)/$(ChartPath) with version ${{ parameters.ChartVersion }}"
+                helm package "$(System.DefaultWorkingDirectory)/$(ChartPath)" --version "${{ parameters.ChartVersion }}" --app-version "${{ parameters.ChartVersion }}"
+                echo "Packaged file name: $(ChartName)-${{ parameters.ChartVersion }}.tgz"
+                ls -lh "$(ChartName)-${{ parameters.ChartVersion }}.tgz"
+
+          # Login to ECR and Push Helm Chart
+          - task: AmazonWebServices.aws-vsts-tools.AWSShellScript.AWSShellScript@1
+            displayName: 'Login to ECR and Push Helm Chart'
+            env:
+              ECRRegistry: $(ECRRegistry)
+              ECRRepo: $(ECRRepo)
+              ChartName: $(ChartName)
+              ChartVersion: ${{ parameters.ChartVersion }}
+              HelmPushTag: $(HelmPushTag)
+            inputs:
+              awsCredentials: '$(DevAWSCredentials)'
+              regionName: '$(AWSRegion)'
+              scriptType: 'inline'
+              inlineScript: |
+                set -e
+                export HELM_EXPERIMENTAL_OCI=1
+                echo "Logging in to AWS ECR for Helm OCI Push..."
+                aws ecr get-login-password --region ${AWS_REGION} | helm registry login ${ECRRegistry} --username AWS --password-stdin
+                echo "Logged into AWS ECR Helm OCI registry"
+
+                CHART_PACKAGE="${ChartName}-${ChartVersion}.tgz"
+                
+                echo "Pushing Helm chart ${CHART_PACKAGE} to oci://${ECRRegistry}/${ECRRepo}:${ChartName}-${ChartVersion}"
+                helm push --insecure-skip-tls-verify "${CHART_PACKAGE}" "oci://${ECRRegistry}/${ECRRepo}:${ChartName}-${ChartVersion}"
