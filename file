@@ -1,34 +1,96 @@
-Login to ECR and Push Helm Chart
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - production/charts/dataplatform/**
 
-View raw log
+parameters:
+  - name: ChartVersion
+    type: string
+    default: '1.0.0'
+    displayName: 'Helm Chart Version'
 
-Starting: Login to ECR and Push Helm Chart
-==============================================================================
-Task         : AWS Shell Script
-Description  : Run a shell script using Bash with AWS credentials as environment variables
-Version      : 1.22.0
-Author       : Amazon Web Services
-Help         : Runs a shell script in Bash, setting AWS credentials and region information into the shell environment using the standard environment keys _AWS_ACCESS_KEY_ID_, _AWS_SECRET_ACCESS_KEY_, _AWS_SESSION_TOKEN_ and _AWS_REGION_.
+variables:
+  ChartName: 'dataplatform'
+  ChartPath: 'production/charts/dataplatform'
+  AWSRegion: 'us-east-2'
+  DevAWSCredentials: 'azdo-cfn-medge-dev'
+  ECRRegistry: '767397961280.dkr.ecr.us-east-2.amazonaws.com'
+  ECRRepo: 'catos-data-platform-repo'
+  HelmPushTag: 'latest'
 
-More information on this task can be found in the [task reference](https://docs.aws.amazon.com/vsts/latest/userguide/awsshell.html).
+stages:
+  - stage: package_and_push_helm_chart
+    displayName: 'Package and Push Helm Chart'
+    jobs:
+      - job: package_helm
+        displayName: 'Package and Push Helm Chart'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
 
-####Task Permissions
-Permissions for this task to call AWS service APIs depend on the activities in the supplied script.
-==============================================================================
-Configuring credentials for task
-...configuring AWS credentials from service endpoint '7d5a5470-2137-4e03-af9d-7a9ed8850877'
-...configuring AWS credentials from service endpoint '7d5a5470-2137-4e03-af9d-7a9ed8850877'
-Skipping OIDC: not enabled in service connections
-...configuring AWS credentials from service endpoint '7d5a5470-2137-4e03-af9d-7a9ed8850877'
-...endpoint defines role-based credentials for role ***.
-Configuring region for task
-...configured to use region us-east-2, defined in task.
-/usr/bin/bash /home/vsts/work/_temp/awsshellscript_2166.sh
-Logging in to AWS ECR for Helm OCI Push...
-Login Succeeded
-Logged into AWS ECR Helm OCI registry
-Pushing Helm chart dataplatform-1.0.0.tgz to oci://767397961280.dkr.ecr.us-east-2.amazonaws.com/catos-data-platform-repo
-Error: failed to perform "Push" on destination: POST "https://767397961280.dkr.ecr.us-east-2.amazonaws.com/v2/catos-data-platform-repo/dataplatform/blobs/uploads/": response status code 404: name unknown: The repository with name 'catos-data-platform-repo/dataplatform' does not exist in the registry with id '767397961280'
+          # Install Helm CLI
+          - task: Bash@3
+            displayName: 'Install Helm CLI'
+            inputs:
+              targetType: 'inline'
+              script: |
+                set -e
+                echo "Installing Helm CLI..."
+                curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+                helm version
 
-##[error]Error: The process '/usr/bin/bash' failed with exit code 1
-Finishing: Login to ECR and Push Helm Chart
+          # Install AWS CLI
+          - task: Bash@3
+            displayName: 'Install AWS CLI'
+            inputs:
+              targetType: 'inline'
+              script: |
+                set -e
+                echo "Installing AWS CLI..."
+                curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                unzip awscliv2.zip
+                sudo ./aws/install --update
+                aws --version
+
+          # Package Helm Chart
+          - task: Bash@3
+            displayName: 'Package Helm Chart'
+            inputs:
+              targetType: 'inline'
+              script: |
+                set -e
+                echo "Packaging Helm chart from $(System.DefaultWorkingDirectory)/$(ChartPath) with version ${{ parameters.ChartVersion }}"
+                # Override chart name so it matches exactly ECR repo name
+                helm package "$(System.DefaultWorkingDirectory)/$(ChartPath)" \
+                  --version "${{ parameters.ChartVersion }}" \
+                  --app-version "${{ parameters.ChartVersion }}" \
+                  --name-template "$(ECRRepo)"
+                echo "Packaged file name: $(ECRRepo)-${{ parameters.ChartVersion }}.tgz"
+                ls -lh "$(ECRRepo)-${{ parameters.ChartVersion }}.tgz"
+
+          # Login to ECR and Push Helm Chart
+          - task: AmazonWebServices.aws-vsts-tools.AWSShellScript.AWSShellScript@1
+            displayName: 'Login to ECR and Push Helm Chart'
+            env:
+              ECRRegistry: $(ECRRegistry)
+              ECRRepo: $(ECRRepo)
+              ChartVersion: ${{ parameters.ChartVersion }}
+            inputs:
+              awsCredentials: '$(DevAWSCredentials)'
+              regionName: '$(AWSRegion)'
+              scriptType: 'inline'
+              inlineScript: |
+                set -e
+                export HELM_EXPERIMENTAL_OCI=1
+                echo "Logging in to AWS ECR for Helm OCI Push..."
+                aws ecr get-login-password --region ${AWS_REGION} | helm registry login ${ECRRegistry} --username AWS --password-stdin
+                echo "Logged into AWS ECR Helm OCI registry"
+
+                CHART_PACKAGE="${ECRRepo}-${ChartVersion}.tgz"
+                
+                echo "Pushing Helm chart ${CHART_PACKAGE} to oci://${ECRRegistry}/${ECRRepo}"
+                helm push --insecure-skip-tls-verify "${CHART_PACKAGE}" "oci://${ECRRegistry}/${ECRRepo}"
