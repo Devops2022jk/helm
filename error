@@ -1,109 +1,563 @@
-the below pipeline is present in azure devops, can you pls create a flow chart for the below pipeline line stages and add below conditions to the pipeline.
+can you add more detailing to the below strategy and make sure it follows industry standard and generate complete strategy and try to patch if any loop whole present.
 
 
 
-Initialize Job
-
-   ↓
-
-Checkout Repository
-
-   ↓
-
-Cache Maven Local Repo
-
-   ↓
-
-Install Java 17
-
-   ↓
-
-JFrog Maven Build
-
-   ↓
-
-Advanced Security Scanning
-
-   ↓
-
-CodeQL Scanning
-
-   ↓
-
-SonarQube Scan
-
-   ↓
-
-Publish Quality Gate Result
-
-   ↓
-
-Publish Test Results
-
-   ↓
-
-Prisma Compute Scan
-
-   ↓
-
-Tar File Creation
-
-   ↓
-
-Publish Docker Image Artifact
-
-   ↓
-
-Post-job: Cache Maven Local Repo
+# Semantic Versioning Strategy for Java Projects in Azure DevOps
 
 
 
-download docker Image --> push to ECR
+## Semantic Versioning Principles
 
 
 
+- **Major (`X.0.0`)**: Breaking changes, incompatible API updates, or significant feature additions.
+
+- **Minor (`X.Y.0`)**: Backward-compatible new features or improvements.
+
+- **Patch (`X.Y.Z`)**: Backward-compatible bug fixes.
 
 
-conditions:
+
+---
 
 
 
-Advanced Security Pipeline Controls
+## Version Bump Triggers and Branches
 
- 
 
-- Dependency Scanning:  
 
-  All vulnerabilities identified during dependency scanning will be reported, but will not cause the pipeline to fail. Development teams are responsible for reviewing the findings and addressing necessary fixes.
+| Branch      | Version Bump | Typical Trigger                             | Automated? | Manual Step? |
 
- 
+|-------------|--------------|---------------------------------------------|------------|--------------|
 
-- CodeQL Scanning:  
+| `main`      | Patch        | Bug fix, hotfix, minor documentation change | Yes        | No           |
 
-  CodeQL analysis will detect and report all vulnerabilities; however, these findings will not break the pipeline. Teams should review the results and implement appropriate remediation as required.
+| `develop`   | Minor        | Backward-compatible new feature             | Yes        | No           |
 
- 
+| `release/*` | Major        | Breaking change, release for prod           | Yes        | Yes (confirm bump, review changelog) |
 
-- Secrets Detection:  
+| `feature/*` | None         | In development, pre-release/SNAPSHOT        | Yes        | No           |
 
-  If any secrets are detected (e.g., plaintext credentials or keys), the pipeline will fail and prevent commits. Secret exposure is strictly prohibited.
 
- 
 
-- SonarQube Scan:  
+### Detailed Triggers
 
-  The pipeline will fail if any of the following SonarQube validation criteria for new code are not met:
 
-  - No new issues are introduced.
 
-  - All new security hotspots are reviewed.
+- **Patch**:  
 
-  - Test coverage for new code is at least 80%.
+  - Merge into `main` from a hotfix/bug branch.
 
-  - Code duplication in new code is no more than 3%.
+  - Automated bump via pipeline after PR merge.
 
- 
 
-- Prisma Scan:  
 
-  Vulnerabilities related to Docker images identified by Prisma Scan will be reported, but will not result in pipeline failure. Teams must review these findings and ensure timely remediation.
+- **Minor**:  
+
+  - Merge into `develop` from a feature branch.
+
+  - Automated bump via pipeline after PR merge.
+
+
+
+- **Major**:  
+
+  - Merge from `release/*` branch into `main`.
+
+  - Requires developer review and confirmation (changelog, breaking changes).
+
+  - Automated bump and tagging after confirmation.
+
+
+
+---
+
+
+
+## Workflow
+
+
+
+### 1. **Feature Development**
+
+- Developers work on `feature/*` branches.
+
+- Version in `pom.xml` remains as `X.Y.Z-SNAPSHOT`.
+
+- No version bump required; automation ensures `SNAPSHOT` suffix.
+
+
+
+### 2. **Feature Merge (Minor)**
+
+- Feature branch is merged into `develop`.
+
+- Pipeline automatically bumps minor version (`X.Y+1.0`), removes `-SNAPSHOT`, tags release.
+
+- After tagging, pipeline bumps next development version to `X.Y+1.1-SNAPSHOT`.
+
+
+
+### 3. **Hotfix/Bugfix (Patch)**
+
+- Bugfix branch is merged directly into `main`.
+
+- Pipeline automatically bumps patch version (`X.Y.Z+1`), removes `-SNAPSHOT`, tags release.
+
+- Next development version is bumped to `X.Y.Z+1-SNAPSHOT`.
+
+
+
+### 4. **Release (Major)**
+
+- Developer starts a `release/*` branch from `develop` for major releases.
+
+- Developer reviews for breaking changes, updates changelog.
+
+- After merging `release/*` into `main`, pipeline bumps major version (`X+1.0.0`), tags release.
+
+- Next development version is bumped to `X+1.0.1-SNAPSHOT`.
+
+
+
+---
+
+
+
+## Manual vs. Automated Responsibilities
+
+
+
+| Step                   | Manual (Developer)                  | Automated (Pipeline)                        |
+
+|------------------------|-------------------------------------|---------------------------------------------|
+
+| Code change            | Yes                                 | No                                          |
+
+| Changelog/Release notes| Yes (for major/minor releases)      | Optional (can auto-generate from commits)   |
+
+| Confirm breaking change| Yes (for major releases)            | No                                          |
+
+| PR creation/merge      | Yes                                 | No                                          |
+
+| Version bump           | No (unless custom bump required)    | Yes (via semantic-version.sh or script)     |
+
+| Tagging                | No                                  | Yes                                         |
+
+| Artifact build/deploy  | No                                  | Yes                                         |
+
+| SNAPSHOT bump post-release | No                              | Yes                                         |
+
+
+
+---
+
+
+
+## Full Automated Steps (in Pipeline)
+
+
+
+1. **On PR merge to relevant branch:**
+
+    - Detect type of change (major, minor, patch) based on branch naming convention or PR labels.
+
+    - Run version bump script (`semantic-version.sh`):
+
+        - Extract version from `pom.xml`.
+
+        - Calculate next version.
+
+        - Update `pom.xml`.
+
+        - Commit & tag.
+
+        - Push to remote.
+
+        - Bump to next `SNAPSHOT` version and commit.
+
+    - Build and deploy artifacts.
+
+    - Optionally, generate release notes from commit history.
+
+
+
+---
+
+
+
+## Example: Branch-based Version Bumping
+
+
+
+- `main` branch:  
+
+  - Only receives patches and major releases.
+
+  - Any direct merge (not from `release/*`) triggers a **patch** bump.
+
+
+
+- `develop` branch:  
+
+  - Receives minor updates/features.
+
+  - Merge from `feature/*` triggers a **minor** bump.
+
+
+
+- `release/*` branch:  
+
+  - Used for major releases.
+
+  - After developer confirmation and PR into `main`, triggers a **major** bump.
+
+
+
+---
+
+
+
+## Custom Version Bump
+
+
+
+If a developer needs a custom bump (e.g., pre-release, alpha, beta):
+
+- Manually run the version bump script with `custom` and desired version:
+
+    ```bash
+
+    ./semantic-version.sh custom 2.0.0-alpha
+
+    ```
+
+- Commit and push.
+
+
+
+---
+
+
+
+## Summary Table
+
+
+
+| Branch        | PR Source         | Version Bump | Changelog Required | Automation      | Manual Step         |
+
+|---------------|------------------|--------------|--------------------|-----------------|---------------------|
+
+| main          | hotfix/bugfix    | Patch        | No                 | Yes             | No                  |
+
+| develop       | feature/*        | Minor        | Yes (recommended)  | Yes             | Changelog           |
+
+| main          | release/*        | Major        | Yes (required)     | Yes             | Changelog, Confirm  |
+
+| feature/*     | in progress      | None         | No                 | Yes (SNAPSHOT)  | No                  |
+
+
+
+---
+
+
+
+## Best Practices
+
+
+
+- Use PR labels or commit messages to assist automation in detecting change type.
+
+- Always update changelog for minor and major releases.
+
+- For major releases, developer must confirm breaking changes.
+
+- Keep version bumping and tagging in the pipeline for consistency.
+
+
+
+---
+
+
+
+**This strategy ensures semantic versioning is robust, traceable, and mostly automated, with developer control at key release points.**
+
+
+
+---
+
+
+
+# Required Scripts & Pipelines
+
+
+
+## 1. Semantic Versioning Bash Script
+
+
+
+```bash name=semantic-version.sh
+
+#!/bin/bash
+
+set -e
+
+
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+RELEASE_TYPE=${1:-""}
+
+CUSTOM_VERSION=${2:-""}
+
+
+
+# Extract current version from pom.xml
+
+CURRENT_VERSION=$(xmllint --xpath "string(//project/version)" pom.xml)
+
+BASE_VERSION=${CURRENT_VERSION/-SNAPSHOT/}
+
+IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+
+
+
+# Determine bump type based on branch convention if not provided
+
+if [ -z "$RELEASE_TYPE" ]; then
+
+  case "$BRANCH" in
+
+    main) RELEASE_TYPE="patch";;
+
+    develop) RELEASE_TYPE="minor";;
+
+    release/*) RELEASE_TYPE="major";;
+
+    *) RELEASE_TYPE="patch";;
+
+  esac
+
+fi
+
+
+
+# Calculate next release version
+
+if [ "$RELEASE_TYPE" == "major" ]; then
+
+  MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0
+
+elif [ "$RELEASE_TYPE" == "minor" ]; then
+
+  MINOR=$((MINOR+1)); PATCH=0
+
+elif [ "$RELEASE_TYPE" == "patch" ]; then
+
+  PATCH=$((PATCH+1))
+
+elif [ "$RELEASE_TYPE" == "custom" ] && [ -n "$CUSTOM_VERSION" ]; then
+
+  NEXT_VERSION="$CUSTOM_VERSION"
+
+else
+
+  echo "Unknown release type: $RELEASE_TYPE"
+
+  exit 1
+
+fi
+
+
+
+if [ "$RELEASE_TYPE" != "custom" ]; then
+
+  NEXT_VERSION="$MAJOR.$MINOR.$PATCH"
+
+fi
+
+
+
+echo "Next release version: $NEXT_VERSION"
+
+
+
+# Update pom.xml to release version
+
+mvn versions:set -DnewVersion=$NEXT_VERSION
+
+mvn versions:commit
+
+
+
+# Commit & tag release
+
+git config user.name "Azure DevOps Pipeline"
+
+git config user.email "azuredevops@yourcompany.com"
+
+git add pom.xml
+
+git commit -m "Release version $NEXT_VERSION"
+
+git tag -a "v$NEXT_VERSION" -m "Release $NEXT_VERSION"
+
+git push origin HEAD
+
+git push origin "v$NEXT_VERSION"
+
+
+
+# Prepare next SNAPSHOT version
+
+if [ "$RELEASE_TYPE" == "major" ]; then
+
+  PATCH=1
+
+  DEV_VERSION="$MAJOR.$MINOR.$PATCH-SNAPSHOT"
+
+elif [ "$RELEASE_TYPE" == "minor" ]; then
+
+  PATCH=$((PATCH+1))
+
+  DEV_VERSION="$MAJOR.$MINOR.$PATCH-SNAPSHOT"
+
+elif [ "$RELEASE_TYPE" == "patch" ]; then
+
+  PATCH=$((PATCH+1))
+
+  DEV_VERSION="$MAJOR.$MINOR.$PATCH-SNAPSHOT"
+
+elif [ "$RELEASE_TYPE" == "custom" ]; then
+
+  if [[ "$NEXT_VERSION" == *-* ]]; then
+
+    DEV_VERSION="$NEXT_VERSION"
+
+  else
+
+    # For custom non-pre-release, bump patch and add SNAPSHOT
+
+    IFS='.' read -r MAJOR MINOR PATCH <<< "$NEXT_VERSION"
+
+    PATCH=$((PATCH+1))
+
+    DEV_VERSION="$MAJOR.$MINOR.$PATCH-SNAPSHOT"
+
+  fi
+
+fi
+
+echo "Next development version: $DEV_VERSION"
+
+mvn versions:set -DnewVersion=$DEV_VERSION
+
+mvn versions:commit
+
+git add pom.xml
+
+git commit -m "Prepare for next development iteration"
+
+git push origin HEAD
+
+```
+
+
+
+---
+
+
+
+## 2. Azure DevOps Pipeline YAML
+
+
+
+```yaml name=azure-pipelines.yml
+
+trigger:
+
+  - main
+
+  - develop
+
+  - release/*
+
+
+
+pool:
+
+  vmImage: 'ubuntu-latest'
+
+
+
+variables:
+
+  # RELEASE_TYPE can be set by PR label, branch, or user input
+
+  RELEASE_TYPE: ''  # Leave blank for auto-detection
+
+
+
+steps:
+
+- checkout: self
+
+  persistCredentials: true
+
+
+
+- task: DownloadSecureFile@1
+
+  name: downloadSettingsXml
+
+  inputs:
+
+    secureFile: 'settings.xml'
+
+  displayName: 'Download Maven settings.xml'
+
+
+
+- task: Bash@3
+
+  displayName: 'Semantic Versioning, Tagging, Prepare SNAPSHOT'
+
+  inputs:
+
+    targetType: 'inline'
+
+    script: |
+
+      chmod +x semantic-version.sh
+
+      ./semantic-version.sh $RELEASE_TYPE
+
+    env:
+
+      GIT_TOKEN: $(System.AccessToken)
+
+
+
+- task: Maven@3
+
+  displayName: 'Build and Deploy Artifacts'
+
+  inputs:
+
+    mavenPomFile: 'pom.xml'
+
+    goals: 'clean deploy'
+
+    options: '--settings $(downloadSettingsXml.secureFilePath)'
+
+
+
+- task: PublishBuildArtifacts@1
+
+  displayName: 'Publish Build Artifacts'
+
+  inputs:
+
+    pathToPublish: '$(System.DefaultWorkingDirectory)/target'
+
+    artifactName: 'drop'
