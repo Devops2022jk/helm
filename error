@@ -1,95 +1,109 @@
-trigger:
-  branches:
-    include:
-      - main
-  paths:
-    include:
-      - production/charts/dataplatform/**
+the below pipeline is present in azure devops, can you pls create a flow chart for the below pipeline line stages and add below conditions to the pipeline.
 
-parameters:
-  - name: ChartVersion
-    type: string
-    default: '1.0.0'
-    displayName: 'Helm Chart Version'
 
-variables:
-  ChartName: 'dataplatform'
-  ChartPath: 'production/charts/dataplatform'
-  AWSRegion: 'us-east-2'
-  DevAWSCredentials: 'azdo-cfn-medge-dev'
-  ECRRegistry: '767397961280.dkr.ecr.us-east-2.amazonaws.com'
-  ECRRepo: 'catos-data-platform-repo'
-  HelmPushTag: 'latest'
 
-stages:
-  - stage: package_and_push_helm_chart
-    displayName: 'Package and Push Helm Chart'
-    jobs:
-      - job: package_helm
-        displayName: 'Package and Push Helm Chart'
-        pool:
-          vmImage: 'ubuntu-latest'
-        steps:
-          - checkout: self
+Initialize Job
 
-          # Install Helm CLI
-          - task: Bash@3
-            displayName: 'Install Helm CLI'
-            inputs:
-              targetType: 'inline'
-              script: |
-                set -e
-                echo "Installing Helm CLI..."
-                curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-                helm version
+   ↓
 
-          # Install AWS CLI
-          - task: Bash@3
-            displayName: 'Install AWS CLI'
-            inputs:
-              targetType: 'inline'
-              script: |
-                set -e
-                echo "Installing AWS CLI..."
-                curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-                unzip awscliv2.zip
-                sudo ./aws/install --update
-                aws --version
+Checkout Repository
 
-          # Package Helm Chart
-          - task: Bash@3
-            displayName: 'Package Helm Chart'
-            inputs:
-              targetType: 'inline'
-              script: |
-                set -e
-                echo "Packaging Helm chart from $(System.DefaultWorkingDirectory)/$(ChartPath) with version ${{ parameters.ChartVersion }}"
-                helm package "$(System.DefaultWorkingDirectory)/$(ChartPath)" \
-                  --version "${{ parameters.ChartVersion }}" \
-                  --app-version "${{ parameters.ChartVersion }}"
-                echo "Packaged file name: $(ChartName)-${{ parameters.ChartVersion }}.tgz"
-                ls -lh "$(ChartName)-${{ parameters.ChartVersion }}.tgz"
+   ↓
 
-          # Login to ECR and Push Helm Chart
-          - task: AmazonWebServices.aws-vsts-tools.AWSShellScript.AWSShellScript@1
-            displayName: 'Login to ECR and Push Helm Chart'
-            env:
-              ECRRegistry: $(ECRRegistry)
-              ECRRepo: $(ECRRepo)
-              ChartName: $(ChartName)
-              ChartVersion: ${{ parameters.ChartVersion }}
-            inputs:
-              awsCredentials: '$(DevAWSCredentials)'
-              regionName: '$(AWSRegion)'
-              scriptType: 'inline'
-              inlineScript: |
-                set -e
-                export HELM_EXPERIMENTAL_OCI=1
-                echo "Logging in to AWS ECR for Helm OCI Push..."
-                aws ecr get-login-password --region ${AWS_REGION} | helm registry login ${ECRRegistry} --username AWS --password-stdin
-                echo "Logged into AWS ECR Helm OCI registry"
+Cache Maven Local Repo
 
-                CHART_PACKAGE="${ChartName}-${ChartVersion}.tgz"
-                
-                echo "Pushing Helm chart ${CHART_PACKAGE} to oci://${ECRRegistry}/${ECRRepo}"
-                helm push --insecure-skip-tls-verify "${CHART_PACKAGE}" "oci://${ECRRegistry}/${ECRRepo}"
+   ↓
+
+Install Java 17
+
+   ↓
+
+JFrog Maven Build
+
+   ↓
+
+Advanced Security Scanning
+
+   ↓
+
+CodeQL Scanning
+
+   ↓
+
+SonarQube Scan
+
+   ↓
+
+Publish Quality Gate Result
+
+   ↓
+
+Publish Test Results
+
+   ↓
+
+Prisma Compute Scan
+
+   ↓
+
+Tar File Creation
+
+   ↓
+
+Publish Docker Image Artifact
+
+   ↓
+
+Post-job: Cache Maven Local Repo
+
+
+
+download docker Image --> push to ECR
+
+
+
+
+
+conditions:
+
+
+
+Advanced Security Pipeline Controls
+
+ 
+
+- Dependency Scanning:  
+
+  All vulnerabilities identified during dependency scanning will be reported, but will not cause the pipeline to fail. Development teams are responsible for reviewing the findings and addressing necessary fixes.
+
+ 
+
+- CodeQL Scanning:  
+
+  CodeQL analysis will detect and report all vulnerabilities; however, these findings will not break the pipeline. Teams should review the results and implement appropriate remediation as required.
+
+ 
+
+- Secrets Detection:  
+
+  If any secrets are detected (e.g., plaintext credentials or keys), the pipeline will fail and prevent commits. Secret exposure is strictly prohibited.
+
+ 
+
+- SonarQube Scan:  
+
+  The pipeline will fail if any of the following SonarQube validation criteria for new code are not met:
+
+  - No new issues are introduced.
+
+  - All new security hotspots are reviewed.
+
+  - Test coverage for new code is at least 80%.
+
+  - Code duplication in new code is no more than 3%.
+
+ 
+
+- Prisma Scan:  
+
+  Vulnerabilities related to Docker images identified by Prisma Scan will be reported, but will not result in pipeline failure. Teams must review these findings and ensure timely remediation.
