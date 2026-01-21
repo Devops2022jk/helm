@@ -11,7 +11,7 @@ View raw log
 Starting: Authenticate and Trigger Dell NativeEdge Blueprint Deployment
 ==============================================================================
 Task         : Command line
-Description  : Run a command line script using Bash on Linux and macOS and cmd.exe on Windows
+5Description  : Run a command line script using Bash on Linux and macOS and cmd.exe on Windows
 Version      : 2.250.1
 Author       : Microsoft Corporation
 Help         : https://docs.microsoft.com/azure/devops/pipelines/tasks/utility/command-line
@@ -220,6 +220,107 @@ stages:
             ENV_SUFFIX: ${{ parameters.EnvSuffix }}
             ADMIN_NODE_VOLUME_SIZE: ${{ parameters.AdminNodeVolumeSize }}
             WORKER_NODE_VOLUME_SIZE: ${{ parameters.WorkerNodeVolumeSize }}
-            ADMIN_INSTANCE_TYPE: ${{ parameters.AdminInstanceType }}
-            DEPLOYMENT_NAME_PREFIX: ${{ parameters.DeploymentNamePrefix }}
-            BUILD_BUILDNUMBER: $(Build.BuildNumber)
+
+
+
+
+
+
+
+trigger: none
+
+pool:
+  name: catos-ubuntu-os
+  demands:
+    agent.name -equals ip-100-127-238-186
+
+name: $(Date:yyyyMMdd).$(Rev:r)
+
+variables:
+  - group: DellNativeEdgeOrchestrator
+  - name: NE_TOKEN_URL
+    value: https://ne-orch.platform.dev.catos.internal.cat.com/rest/v2/api-token
+  - name: NE_DEPLOY_URL
+    value: https://ne-orch.platform.dev.catos.internal.cat.com/rest/v2/deployments
+  - name: BLUEPRINT_ID
+    value: catos-infra-aws-cluster
+  - name: ACCOUNT_PREFIX
+    value: catos
+
+stages:
+- stage: DeployToNativeEdge
+  jobs:
+  - job: Deploy
+    steps:
+    - checkout: none
+
+    - bash: |
+        set -euo pipefail
+
+        echo "Installing jq..."
+        command -v jq >/dev/null || sudo apt-get update && sudo apt-get install -y jq
+
+        echo "Requesting OAuth token..."
+        token_response=$(curl -k -s -X POST "$NE_TOKEN_URL" \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          --data-urlencode "client_id=$NE_CLIENT_ID" \
+          --data-urlencode "client_secret=$NE_SECRET_ID" \
+          --data-urlencode "grant_type=client_credentials")
+
+        echo "$token_response" | jq .
+
+        TOKEN=$(echo "$token_response" | jq -r '.access_token')
+
+        if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
+          echo "❌ Token retrieval failed"
+          exit 1
+        fi
+
+        echo "Token acquired"
+
+        BUILD=$(Build.BuildNumber)
+        DEPLOYMENT_NAME="catos-${BUILD}"
+        CLUSTER_NAME="cluster-${BUILD}"
+
+        jq -n \
+          --arg blueprint "$BLUEPRINT_ID" \
+          --arg name "$DEPLOYMENT_NAME" \
+          --arg team "devops" \
+          --arg cluster "$CLUSTER_NAME" \
+          --arg env "dev" \
+          --arg node "m5.4xlarge" \
+          --arg admin "t3.medium" \
+          --arg acct "$ACCOUNT_PREFIX" \
+          '{
+            blueprint_id: $blueprint,
+            name: $name,
+            inputs: {
+              team_name: $team,
+              cluster_number: $cluster,
+              environment_suffix: $env,
+              node_instance_type: $node,
+              admin_instance_type: $admin,
+              account_prefix: $acct,
+              admin_node_volume_size_gb: 400,
+              worker_node_volume_size_gb: 400
+            }
+          }' > deploy.json
+
+        echo "Triggering deployment..."
+        response=$(curl -k -s -X POST "$NE_DEPLOY_URL" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d @deploy.json)
+
+        echo "$response" | jq .
+
+        if echo "$response" | jq -e '.errors | length > 0' >/dev/null; then
+          echo "❌ NativeEdge returned deployment errors"
+          exit 1
+        fi
+
+        echo "🚀 Blueprint deployment triggered successfully"
+      env:
+        NE_CLIENT_ID: $(NE_CLIENT_ID)
+        NE_SECRET_ID: $(NE_SECRET_ID)
+
