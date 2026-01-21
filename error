@@ -1,563 +1,225 @@
-can you add more detailing to the below strategy and make sure it follows industry standard and generate complete strategy and try to patch if any loop whole present.
-
-
-
-# Semantic Versioning Strategy for Java Projects in Azure DevOps
-
-
-
-## Semantic Versioning Principles
-
-
-
-- **Major (`X.0.0`)**: Breaking changes, incompatible API updates, or significant feature additions.
-
-- **Minor (`X.Y.0`)**: Backward-compatible new features or improvements.
-
-- **Patch (`X.Y.Z`)**: Backward-compatible bug fixes.
-
-
-
----
-
-
-
-## Version Bump Triggers and Branches
-
-
-
-| Branch      | Version Bump | Typical Trigger                             | Automated? | Manual Step? |
-
-|-------------|--------------|---------------------------------------------|------------|--------------|
-
-| `main`      | Patch        | Bug fix, hotfix, minor documentation change | Yes        | No           |
-
-| `develop`   | Minor        | Backward-compatible new feature             | Yes        | No           |
-
-| `release/*` | Major        | Breaking change, release for prod           | Yes        | Yes (confirm bump, review changelog) |
-
-| `feature/*` | None         | In development, pre-release/SNAPSHOT        | Yes        | No           |
-
-
-
-### Detailed Triggers
-
-
-
-- **Patch**:  
-
-  - Merge into `main` from a hotfix/bug branch.
-
-  - Automated bump via pipeline after PR merge.
-
-
-
-- **Minor**:  
-
-  - Merge into `develop` from a feature branch.
-
-  - Automated bump via pipeline after PR merge.
-
-
-
-- **Major**:  
-
-  - Merge from `release/*` branch into `main`.
-
-  - Requires developer review and confirmation (changelog, breaking changes).
-
-  - Automated bump and tagging after confirmation.
-
-
-
----
-
-
-
-## Workflow
-
-
-
-### 1. **Feature Development**
-
-- Developers work on `feature/*` branches.
-
-- Version in `pom.xml` remains as `X.Y.Z-SNAPSHOT`.
-
-- No version bump required; automation ensures `SNAPSHOT` suffix.
-
-
-
-### 2. **Feature Merge (Minor)**
-
-- Feature branch is merged into `develop`.
-
-- Pipeline automatically bumps minor version (`X.Y+1.0`), removes `-SNAPSHOT`, tags release.
-
-- After tagging, pipeline bumps next development version to `X.Y+1.1-SNAPSHOT`.
-
-
-
-### 3. **Hotfix/Bugfix (Patch)**
-
-- Bugfix branch is merged directly into `main`.
-
-- Pipeline automatically bumps patch version (`X.Y.Z+1`), removes `-SNAPSHOT`, tags release.
-
-- Next development version is bumped to `X.Y.Z+1-SNAPSHOT`.
-
-
-
-### 4. **Release (Major)**
-
-- Developer starts a `release/*` branch from `develop` for major releases.
-
-- Developer reviews for breaking changes, updates changelog.
-
-- After merging `release/*` into `main`, pipeline bumps major version (`X+1.0.0`), tags release.
-
-- Next development version is bumped to `X+1.0.1-SNAPSHOT`.
-
-
-
----
-
-
-
-## Manual vs. Automated Responsibilities
-
-
-
-| Step                   | Manual (Developer)                  | Automated (Pipeline)                        |
-
-|------------------------|-------------------------------------|---------------------------------------------|
-
-| Code change            | Yes                                 | No                                          |
-
-| Changelog/Release notes| Yes (for major/minor releases)      | Optional (can auto-generate from commits)   |
-
-| Confirm breaking change| Yes (for major releases)            | No                                          |
-
-| PR creation/merge      | Yes                                 | No                                          |
-
-| Version bump           | No (unless custom bump required)    | Yes (via semantic-version.sh or script)     |
-
-| Tagging                | No                                  | Yes                                         |
-
-| Artifact build/deploy  | No                                  | Yes                                         |
-
-| SNAPSHOT bump post-release | No                              | Yes                                         |
-
-
-
----
-
-
-
-## Full Automated Steps (in Pipeline)
-
-
-
-1. **On PR merge to relevant branch:**
-
-    - Detect type of change (major, minor, patch) based on branch naming convention or PR labels.
-
-    - Run version bump script (`semantic-version.sh`):
-
-        - Extract version from `pom.xml`.
-
-        - Calculate next version.
-
-        - Update `pom.xml`.
-
-        - Commit & tag.
-
-        - Push to remote.
-
-        - Bump to next `SNAPSHOT` version and commit.
-
-    - Build and deploy artifacts.
-
-    - Optionally, generate release notes from commit history.
-
-
-
----
-
-
-
-## Example: Branch-based Version Bumping
-
-
-
-- `main` branch:  
-
-  - Only receives patches and major releases.
-
-  - Any direct merge (not from `release/*`) triggers a **patch** bump.
-
-
-
-- `develop` branch:  
-
-  - Receives minor updates/features.
-
-  - Merge from `feature/*` triggers a **minor** bump.
-
-
-
-- `release/*` branch:  
-
-  - Used for major releases.
-
-  - After developer confirmation and PR into `main`, triggers a **major** bump.
-
-
-
----
-
-
-
-## Custom Version Bump
-
-
-
-If a developer needs a custom bump (e.g., pre-release, alpha, beta):
-
-- Manually run the version bump script with `custom` and desired version:
-
-    ```bash
-
-    ./semantic-version.sh custom 2.0.0-alpha
-
-    ```
-
-- Commit and push.
-
-
-
----
-
-
-
-## Summary Table
-
-
-
-| Branch        | PR Source         | Version Bump | Changelog Required | Automation      | Manual Step         |
-
-|---------------|------------------|--------------|--------------------|-----------------|---------------------|
-
-| main          | hotfix/bugfix    | Patch        | No                 | Yes             | No                  |
-
-| develop       | feature/*        | Minor        | Yes (recommended)  | Yes             | Changelog           |
-
-| main          | release/*        | Major        | Yes (required)     | Yes             | Changelog, Confirm  |
-
-| feature/*     | in progress      | None         | No                 | Yes (SNAPSHOT)  | No                  |
-
-
-
----
-
-
-
-## Best Practices
-
-
-
-- Use PR labels or commit messages to assist automation in detecting change type.
-
-- Always update changelog for minor and major releases.
-
-- For major releases, developer must confirm breaking changes.
-
-- Keep version bumping and tagging in the pipeline for consistency.
-
-
-
----
-
-
-
-**This strategy ensures semantic versioning is robust, traceable, and mostly automated, with developer control at key release points.**
-
-
-
----
-
-
-
-# Required Scripts & Pipelines
-
-
-
-## 1. Semantic Versioning Bash Script
-
-
-
-```bash name=semantic-version.sh
-
-#!/bin/bash
-
-set -e
-
-
-
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-
-RELEASE_TYPE=${1:-""}
-
-CUSTOM_VERSION=${2:-""}
-
-
-
-# Extract current version from pom.xml
-
-CURRENT_VERSION=$(xmllint --xpath "string(//project/version)" pom.xml)
-
-BASE_VERSION=${CURRENT_VERSION/-SNAPSHOT/}
-
-IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
-
-
-
-# Determine bump type based on branch convention if not provided
-
-if [ -z "$RELEASE_TYPE" ]; then
-
-  case "$BRANCH" in
-
-    main) RELEASE_TYPE="patch";;
-
-    develop) RELEASE_TYPE="minor";;
-
-    release/*) RELEASE_TYPE="major";;
-
-    *) RELEASE_TYPE="patch";;
-
-  esac
-
-fi
-
-
-
-# Calculate next release version
-
-if [ "$RELEASE_TYPE" == "major" ]; then
-
-  MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0
-
-elif [ "$RELEASE_TYPE" == "minor" ]; then
-
-  MINOR=$((MINOR+1)); PATCH=0
-
-elif [ "$RELEASE_TYPE" == "patch" ]; then
-
-  PATCH=$((PATCH+1))
-
-elif [ "$RELEASE_TYPE" == "custom" ] && [ -n "$CUSTOM_VERSION" ]; then
-
-  NEXT_VERSION="$CUSTOM_VERSION"
-
-else
-
-  echo "Unknown release type: $RELEASE_TYPE"
-
-  exit 1
-
-fi
-
-
-
-if [ "$RELEASE_TYPE" != "custom" ]; then
-
-  NEXT_VERSION="$MAJOR.$MINOR.$PATCH"
-
-fi
-
-
-
-echo "Next release version: $NEXT_VERSION"
-
-
-
-# Update pom.xml to release version
-
-mvn versions:set -DnewVersion=$NEXT_VERSION
-
-mvn versions:commit
-
-
-
-# Commit & tag release
-
-git config user.name "Azure DevOps Pipeline"
-
-git config user.email "azuredevops@yourcompany.com"
-
-git add pom.xml
-
-git commit -m "Release version $NEXT_VERSION"
-
-git tag -a "v$NEXT_VERSION" -m "Release $NEXT_VERSION"
-
-git push origin HEAD
-
-git push origin "v$NEXT_VERSION"
-
-
-
-# Prepare next SNAPSHOT version
-
-if [ "$RELEASE_TYPE" == "major" ]; then
-
-  PATCH=1
-
-  DEV_VERSION="$MAJOR.$MINOR.$PATCH-SNAPSHOT"
-
-elif [ "$RELEASE_TYPE" == "minor" ]; then
-
-  PATCH=$((PATCH+1))
-
-  DEV_VERSION="$MAJOR.$MINOR.$PATCH-SNAPSHOT"
-
-elif [ "$RELEASE_TYPE" == "patch" ]; then
-
-  PATCH=$((PATCH+1))
-
-  DEV_VERSION="$MAJOR.$MINOR.$PATCH-SNAPSHOT"
-
-elif [ "$RELEASE_TYPE" == "custom" ]; then
-
-  if [[ "$NEXT_VERSION" == *-* ]]; then
-
-    DEV_VERSION="$NEXT_VERSION"
-
-  else
-
-    # For custom non-pre-release, bump patch and add SNAPSHOT
-
-    IFS='.' read -r MAJOR MINOR PATCH <<< "$NEXT_VERSION"
-
-    PATCH=$((PATCH+1))
-
-    DEV_VERSION="$MAJOR.$MINOR.$PATCH-SNAPSHOT"
-
-  fi
-
-fi
-
-echo "Next development version: $DEV_VERSION"
-
-mvn versions:set -DnewVersion=$DEV_VERSION
-
-mvn versions:commit
-
-git add pom.xml
-
-git commit -m "Prepare for next development iteration"
-
-git push origin HEAD
-
-```
-
-
-
----
-
-
-
-## 2. Azure DevOps Pipeline YAML
-
-
-
-```yaml name=azure-pipelines.yml
-
-trigger:
-
-  - main
-
-  - develop
-
-  - release/*
-
-
+i am trying to access dell native edge orchestrator via azure devops pipeline and trigger a blue print to create a service in aws but getting 200 OK response but below error. rectify the error and generate complete pipeline to achieve my requirement.
+
+
+refer below restAPI doc as well --> https://developer.dell.com/apis/fb91fb27-caa2-4bc3-be1f-2c7c1e40f297/versions/2.0.2/server/api/openapi/config/bundled.yaml/paths/~1rest~1v2~1deployments/get
+error:
+
+Authenticate and Trigger Dell NativeEdge Blueprint Deployment
+
+View raw log
+
+Starting: Authenticate and Trigger Dell NativeEdge Blueprint Deployment
+==============================================================================
+Task         : Command line
+Description  : Run a command line script using Bash on Linux and macOS and cmd.exe on Windows
+Version      : 2.250.1
+Author       : Microsoft Corporation
+Help         : https://docs.microsoft.com/azure/devops/pipelines/tasks/utility/command-line
+==============================================================================
+Generating script.
+========================== Starting Command Output ===========================
+/usr/bin/bash --noprofile --norc /home/ubuntu/catos-master_agent/_work/_temp/0b42dd73-8437-4efa-91ec-d69761708888.sh
+===[ Debugging: Environment & Network Info ]===
+Linux ip-100-127-238-186 6.8.0-1019-aws #21-Ubuntu SMP Wed Nov  6 21:21:49 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux
+Running as user: root
+Current Build Number: 20260121.10
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host noprefixroute 
+       valid_lft forever preferred_lft forever
+2: ens5: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP group default qlen 1000
+    link/ether 06:8a:fd:67:eb:17 brd ff:ff:ff:ff:ff:ff
+    inet 100.127.238.186/22 metric 100 brd 100.127.239.255 scope global dynamic ens5
+       valid_lft 2673sec preferred_lft 2673sec
+    inet6 fe80::48a:fdff:fe67:eb17/64 scope link 
+       valid_lft forever preferred_lft forever
+# This is /run/systemd/resolve/stub-resolv.conf managed by man:systemd-resolved(8).
+# Do not edit.
+#
+# This file might be symlinked as /etc/resolv.conf. If you're looking at
+# /etc/resolv.conf and seeing this text, you have followed the symlink.
+#
+# This is a dynamic resolv.conf file for connecting local clients to the
+# internal DNS stub resolver of systemd-resolved. This file lists all
+# configured search domains.
+#
+# Run "resolvectl status" to see details about the uplink DNS servers
+# currently in use.
+#
+# Third party programs should typically not access this file directly, but only
+# through the symlink at /etc/resolv.conf. To manage man:resolv.conf(5) in a
+# different way, replace this symlink by a static file or a different symlink.
+
+pipeline:
+trigger: none
 
 pool:
+  name: catos-ubuntu-os
+  demands:
+    agent.name -equals ip-100-127-238-186
 
-  vmImage: 'ubuntu-latest'
-
-
+name: $(Date:yyyyMMdd).$(Rev:r)
 
 variables:
+  - group: DellNativeEdgeOrchestrator
+  - name: ACCOUNT_PREFIX
+    value: 'catos'
+  - name: NE_TOKEN_URL
+    value: 'https://ne-orch.platform.dev.catos.internal.cat.com/rest/v2/api-token'
+  - name: NE_DEPLOY_URL
+    value: 'https://ne-orch.platform.dev.catos.internal.cat.com/rest/v2/deployments/9c60723d-9e89-49fc-9116-267d862fbd52'
+  - name: BLUEPRINT_ID
+    value: 'catos-infra-aws-cluster'
 
-  # RELEASE_TYPE can be set by PR label, branch, or user input
+parameters:
+  - name: DeploymentNamePrefix
+    displayName: 'Deployment Name Prefix'
+    type: string
+    default: 'catos-devops-nightly-build'
+  - name: TeamName
+    displayName: 'Team Name'
+    type: string
+    default: 'devops'
+  - name: NodeInstanceType
+    displayName: 'Node Instance Type'
+    type: string
+    default: 'm5.4xlarge'
+  - name: ClusterNumberPrefix
+    displayName: 'Cluster Number Prefix'
+    type: string
+    default: 'cluster'
+  - name: EnvSuffix
+    displayName: 'Environment Suffix'
+    type: string
+    default: 'dev'
+  - name: AdminNodeVolumeSize
+    displayName: 'Admin Node Volume Size (GB)'
+    type: number
+    default: 400
+  - name: WorkerNodeVolumeSize
+    displayName: 'Worker Node Volume Size (GB)'
+    type: number
+    default: 400
+  - name: AdminInstanceType
+    displayName: 'Admin Instance Type'
+    type: string
+    default: 't3.medium'
 
-  RELEASE_TYPE: ''  # Leave blank for auto-detection
+stages:
+- stage: DeployToDellNativeEdge
+  displayName: 'Deploy Blueprint: Dell NativeEdge Orchestrator'
+  jobs:
+    - job: DeployBlueprint
+      displayName: 'Trigger Blueprint Deployment'
+      steps:
+        - checkout: none
 
+        - script: |
+            set -euo pipefail
 
+            echo "===[ Debugging: Environment & Network Info ]==="
+            uname -a
+            echo "Running as user: $(whoami)"
+            echo "Current Build Number: $BUILD_BUILDNUMBER"
+            ip addr || ifconfig || true
+            cat /etc/resolv.conf || true
+            ping -c 3 ne-orch.platform.dev.catos.internal.cat.com || echo "Ping failed (ICMP not always allowed)"
+            echo "===[ End Debug Info ]==="
 
-steps:
+            echo "===[ Debug: Testing curl connectivity to Orchestrator API for token retrieval... ]==="
+            curl -k -v --connect-timeout 15 --max-time 20 --head "$NE_TOKEN_URL" || echo "HEAD request failed"
+            curl -k -v --connect-timeout 15 --max-time 20 "$NE_TOKEN_URL" || echo "GET request failed"
+            echo "===[ End curl connectivity test ]==="
 
-- checkout: self
+            echo "===[ Requesting API token from Dell NativeEdge Orchestrator (form-encoded)... ]==="
+            token_response=$(curl -k -v --connect-timeout 30 --max-time 40 --location --silent \
+              --header 'Content-Type: multipart/form-data' \
+              --form "client_id=$NE_CLIENT_ID" \
+              --form "client_secret=$NE_SECRET_ID" \
+              --form "grant_type=client_credentials" \
+              "$NE_TOKEN_URL" 2>&1)
+            echo "Full token response:"
+            echo "$token_response"
 
-  persistCredentials: true
+            api_token=$(echo "$token_response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || echo "")
 
+            if [ -z "$api_token" ]; then
+              echo "===[ ERROR: Failed to retrieve API token. Full response above. ]==="
+              exit 28
+            fi
 
+            echo "Acquired API token: [hidden for security]"
 
-- task: DownloadSecureFile@1
+            build_number="$BUILD_BUILDNUMBER"
+            deployment_name="${DEPLOYMENT_NAME_PREFIX}_${build_number}"
+            cluster_number="${CLUSTER_NUMBER_PREFIX}_${build_number}"
 
-  name: downloadSettingsXml
+            echo "Generating JSON body for deployment using jq..."
+            if ! command -v jq >/dev/null 2>&1; then
+              echo "jq not found, installing..."
+              sudo apt-get update
+              sudo apt-get install -y jq
+            fi
 
-  inputs:
+            jq -n '
+              {
+                blueprint_id: env.BLUEPRINT_ID,
+                name: env.deployment_name,
+                inputs: {
+                  team_name: env.TEAM_NAME,
+                  Node_Instance_Type: env.NODE_INSTANCE_TYPE,
+                  Account_Prefix: env.ACCOUNT_PREFIX,
+                  Cluster_Number: env.cluster_number,
+                  "Admin_Node_Volume_Size (GB)": (env.ADMIN_NODE_VOLUME_SIZE | tonumber),
+                  Environment_Suffix: env.ENV_SUFFIX,
+                  "Worker_Node_Volume_Size (GB)": (env.WORKER_NODE_VOLUME_SIZE | tonumber),
+                  Admin_Instance_Type: env.ADMIN_INSTANCE_TYPE
+                },
+                tags: [
+                  {key: "deployment_team", value: env.TEAM_NAME},
+                  {key: "environment", value: env.ENV_SUFFIX},
+                  {key: "triggered_by", value: "CatOs-DevOps"},
+                  {key: "triggered_on", value: env.build_number}
+                ]
+              }
+            ' > deploy_body.json
 
-    secureFile: 'settings.xml'
+            echo "======== Deployment Request Body ========"
+            cat deploy_body.json
+            echo "========================================"
 
-  displayName: 'Download Maven settings.xml'
+            echo "Triggering blueprint deployment..."
+            response=$(curl -k -v --connect-timeout 60 --max-time 120 --location --show-error \
+              --header 'Content-Type: application/json' \
+              --header "Authorization: Bearer $api_token" \
+              --data @deploy_body.json \
+              "$NE_DEPLOY_URL" 2>&1 )
 
+            echo "Dell NativeEdge Deployment API response:"
+            echo "$response"
 
+            if echo "$response" | grep -Eiq 'error|fail|unauthorized|invalid|timeout'; then
+              echo "Deployment trigger failed. See response above."
+              exit 1
+            fi
 
-- task: Bash@3
-
-  displayName: 'Semantic Versioning, Tagging, Prepare SNAPSHOT'
-
-  inputs:
-
-    targetType: 'inline'
-
-    script: |
-
-      chmod +x semantic-version.sh
-
-      ./semantic-version.sh $RELEASE_TYPE
-
-    env:
-
-      GIT_TOKEN: $(System.AccessToken)
-
-
-
-- task: Maven@3
-
-  displayName: 'Build and Deploy Artifacts'
-
-  inputs:
-
-    mavenPomFile: 'pom.xml'
-
-    goals: 'clean deploy'
-
-    options: '--settings $(downloadSettingsXml.secureFilePath)'
-
-
-
-- task: PublishBuildArtifacts@1
-
-  displayName: 'Publish Build Artifacts'
-
-  inputs:
-
-    pathToPublish: '$(System.DefaultWorkingDirectory)/target'
-
-    artifactName: 'drop'
+            echo "Deployment triggered successfully."
+          displayName: 'Authenticate and Trigger Dell NativeEdge Blueprint Deployment'
+          env:
+            NE_CLIENT_ID: $(NE_CLIENT_ID)
+            NE_SECRET_ID: $(NE_SECRET_ID)
+            NE_TOKEN_URL: $(NE_TOKEN_URL)
+            NE_DEPLOY_URL: $(NE_DEPLOY_URL)
+            ACCOUNT_PREFIX: $(ACCOUNT_PREFIX)
+            BLUEPRINT_ID: $(BLUEPRINT_ID)
+            TEAM_NAME: ${{ parameters.TeamName }}
+            NODE_INSTANCE_TYPE: ${{ parameters.NodeInstanceType }}
+            CLUSTER_NUMBER_PREFIX: ${{ parameters.ClusterNumberPrefix }}
+            ENV_SUFFIX: ${{ parameters.EnvSuffix }}
+            ADMIN_NODE_VOLUME_SIZE: ${{ parameters.AdminNodeVolumeSize }}
+            WORKER_NODE_VOLUME_SIZE: ${{ parameters.WorkerNodeVolumeSize }}
+            ADMIN_INSTANCE_TYPE: ${{ parameters.AdminInstanceType }}
+            DEPLOYMENT_NAME_PREFIX: ${{ parameters.DeploymentNamePrefix }}
+            BUILD_BUILDNUMBER: $(Build.BuildNumber)
