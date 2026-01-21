@@ -1,326 +1,40 @@
-i am trying to access dell native edge orchestrator via azure devops pipeline and trigger a blue print to create a service in aws but getting 200 OK response but below error. rectify the error and generate complete pipeline to achieve my requirement.
+(Reading database ... 100%
+(Reading database ... 158410 files and directories currently installed.)
+Preparing to unpack .../jq_1.7.1-3ubuntu0.24.04.1_amd64.deb ...
+Unpacking jq (1.7.1-3ubuntu0.24.04.1) over (1.7.1-3build1) ...
+Preparing to unpack .../libjq1_1.7.1-3ubuntu0.24.04.1_amd64.deb ...
+Unpacking libjq1:amd64 (1.7.1-3ubuntu0.24.04.1) over (1.7.1-3build1) ...
+Setting up libjq1:amd64 (1.7.1-3ubuntu0.24.04.1) ...
+Setting up jq (1.7.1-3ubuntu0.24.04.1) ...
+Processing triggers for man-db (2.12.0-4build2) ...
+Processing triggers for libc-bin (2.39-0ubuntu8.3) ...
+debconf: unable to initialize frontend: Dialog
+debconf: (Dialog frontend will not work on a dumb terminal, an emacs shell buffer, or without a controlling terminal.)
+debconf: falling back to frontend: Readline
+debconf: unable to initialize frontend: Readline
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Teletype
 
+Running kernel seems to be up-to-date.
 
-refer below restAPI doc as well --> https://developer.dell.com/apis/fb91fb27-caa2-4bc3-be1f-2c7c1e40f297/versions/2.0.2/server/api/openapi/config/bundled.yaml/paths/~1rest~1v2~1deployments/get
-error:
+No services need to be restarted.
 
-Authenticate and Trigger Dell NativeEdge Blueprint Deployment
+No containers need to be restarted.
 
-View raw log
+No user sessions are running outdated binaries.
 
-Starting: Authenticate and Trigger Dell NativeEdge Blueprint Deployment
-==============================================================================
-Task         : Command line
-5Description  : Run a command line script using Bash on Linux and macOS and cmd.exe on Windows
-Version      : 2.250.1
-Author       : Microsoft Corporation
-Help         : https://docs.microsoft.com/azure/devops/pipelines/tasks/utility/command-line
-==============================================================================
-Generating script.
-========================== Starting Command Output ===========================
-/usr/bin/bash --noprofile --norc /home/ubuntu/catos-master_agent/_work/_temp/0b42dd73-8437-4efa-91ec-d69761708888.sh
-===[ Debugging: Environment & Network Info ]===
-Linux ip-100-127-238-186 6.8.0-1019-aws #21-Ubuntu SMP Wed Nov  6 21:21:49 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux
-Running as user: root
-Current Build Number: 20260121.10
-1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
-    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
-    inet 127.0.0.1/8 scope host lo
-       valid_lft forever preferred_lft forever
-    inet6 ::1/128 scope host noprefixroute 
-       valid_lft forever preferred_lft forever
-2: ens5: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP group default qlen 1000
-    link/ether 06:8a:fd:67:eb:17 brd ff:ff:ff:ff:ff:ff
-    inet 100.127.238.186/22 metric 100 brd 100.127.239.255 scope global dynamic ens5
-       valid_lft 2673sec preferred_lft 2673sec
-    inet6 fe80::48a:fdff:fe67:eb17/64 scope link 
-       valid_lft forever preferred_lft forever
-# This is /run/systemd/resolve/stub-resolv.conf managed by man:systemd-resolved(8).
-# Do not edit.
-#
-# This file might be symlinked as /etc/resolv.conf. If you're looking at
-# /etc/resolv.conf and seeing this text, you have followed the symlink.
-#
-# This is a dynamic resolv.conf file for connecting local clients to the
-# internal DNS stub resolver of systemd-resolved. This file lists all
-# configured search domains.
-#
-# Run "resolvectl status" to see details about the uplink DNS servers
-# currently in use.
-#
-# Third party programs should typically not access this file directly, but only
-# through the symlink at /etc/resolv.conf. To manage man:resolv.conf(5) in a
-# different way, replace this symlink by a static file or a different symlink.
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+Requesting OAuth token...
+{
+  "http_status_code": 400,
+  "messages": [
+    {
+      "message": "request body has an error: header Content-Type has unexpected value \"application/x-www-form-urlencoded\"",
+      "severity": "ERROR"
+    }
+  ]
+}
+❌ Token retrieval failed
 
-pipeline:
-trigger: none
-
-pool:
-  name: catos-ubuntu-os
-  demands:
-    agent.name -equals ip-100-127-238-186
-
-name: $(Date:yyyyMMdd).$(Rev:r)
-
-variables:
-  - group: DellNativeEdgeOrchestrator
-  - name: ACCOUNT_PREFIX
-    value: 'catos'
-  - name: NE_TOKEN_URL
-    value: 'https://ne-orch.platform.dev.catos.internal.cat.com/rest/v2/api-token'
-  - name: NE_DEPLOY_URL
-    value: 'https://ne-orch.platform.dev.catos.internal.cat.com/rest/v2/deployments/9c60723d-9e89-49fc-9116-267d862fbd52'
-  - name: BLUEPRINT_ID
-    value: 'catos-infra-aws-cluster'
-
-parameters:
-  - name: DeploymentNamePrefix
-    displayName: 'Deployment Name Prefix'
-    type: string
-    default: 'catos-devops-nightly-build'
-  - name: TeamName
-    displayName: 'Team Name'
-    type: string
-    default: 'devops'
-  - name: NodeInstanceType
-    displayName: 'Node Instance Type'
-    type: string
-    default: 'm5.4xlarge'
-  - name: ClusterNumberPrefix
-    displayName: 'Cluster Number Prefix'
-    type: string
-    default: 'cluster'
-  - name: EnvSuffix
-    displayName: 'Environment Suffix'
-    type: string
-    default: 'dev'
-  - name: AdminNodeVolumeSize
-    displayName: 'Admin Node Volume Size (GB)'
-    type: number
-    default: 400
-  - name: WorkerNodeVolumeSize
-    displayName: 'Worker Node Volume Size (GB)'
-    type: number
-    default: 400
-  - name: AdminInstanceType
-    displayName: 'Admin Instance Type'
-    type: string
-    default: 't3.medium'
-
-stages:
-- stage: DeployToDellNativeEdge
-  displayName: 'Deploy Blueprint: Dell NativeEdge Orchestrator'
-  jobs:
-    - job: DeployBlueprint
-      displayName: 'Trigger Blueprint Deployment'
-      steps:
-        - checkout: none
-
-        - script: |
-            set -euo pipefail
-
-            echo "===[ Debugging: Environment & Network Info ]==="
-            uname -a
-            echo "Running as user: $(whoami)"
-            echo "Current Build Number: $BUILD_BUILDNUMBER"
-            ip addr || ifconfig || true
-            cat /etc/resolv.conf || true
-            ping -c 3 ne-orch.platform.dev.catos.internal.cat.com || echo "Ping failed (ICMP not always allowed)"
-            echo "===[ End Debug Info ]==="
-
-            echo "===[ Debug: Testing curl connectivity to Orchestrator API for token retrieval... ]==="
-            curl -k -v --connect-timeout 15 --max-time 20 --head "$NE_TOKEN_URL" || echo "HEAD request failed"
-            curl -k -v --connect-timeout 15 --max-time 20 "$NE_TOKEN_URL" || echo "GET request failed"
-            echo "===[ End curl connectivity test ]==="
-
-            echo "===[ Requesting API token from Dell NativeEdge Orchestrator (form-encoded)... ]==="
-            token_response=$(curl -k -v --connect-timeout 30 --max-time 40 --location --silent \
-              --header 'Content-Type: multipart/form-data' \
-              --form "client_id=$NE_CLIENT_ID" \
-              --form "client_secret=$NE_SECRET_ID" \
-              --form "grant_type=client_credentials" \
-              "$NE_TOKEN_URL" 2>&1)
-            echo "Full token response:"
-            echo "$token_response"
-
-            api_token=$(echo "$token_response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || echo "")
-
-            if [ -z "$api_token" ]; then
-              echo "===[ ERROR: Failed to retrieve API token. Full response above. ]==="
-              exit 28
-            fi
-
-            echo "Acquired API token: [hidden for security]"
-
-            build_number="$BUILD_BUILDNUMBER"
-            deployment_name="${DEPLOYMENT_NAME_PREFIX}_${build_number}"
-            cluster_number="${CLUSTER_NUMBER_PREFIX}_${build_number}"
-
-            echo "Generating JSON body for deployment using jq..."
-            if ! command -v jq >/dev/null 2>&1; then
-              echo "jq not found, installing..."
-              sudo apt-get update
-              sudo apt-get install -y jq
-            fi
-
-            jq -n '
-              {
-                blueprint_id: env.BLUEPRINT_ID,
-                name: env.deployment_name,
-                inputs: {
-                  team_name: env.TEAM_NAME,
-                  Node_Instance_Type: env.NODE_INSTANCE_TYPE,
-                  Account_Prefix: env.ACCOUNT_PREFIX,
-                  Cluster_Number: env.cluster_number,
-                  "Admin_Node_Volume_Size (GB)": (env.ADMIN_NODE_VOLUME_SIZE | tonumber),
-                  Environment_Suffix: env.ENV_SUFFIX,
-                  "Worker_Node_Volume_Size (GB)": (env.WORKER_NODE_VOLUME_SIZE | tonumber),
-                  Admin_Instance_Type: env.ADMIN_INSTANCE_TYPE
-                },
-                tags: [
-                  {key: "deployment_team", value: env.TEAM_NAME},
-                  {key: "environment", value: env.ENV_SUFFIX},
-                  {key: "triggered_by", value: "CatOs-DevOps"},
-                  {key: "triggered_on", value: env.build_number}
-                ]
-              }
-            ' > deploy_body.json
-
-            echo "======== Deployment Request Body ========"
-            cat deploy_body.json
-            echo "========================================"
-
-            echo "Triggering blueprint deployment..."
-            response=$(curl -k -v --connect-timeout 60 --max-time 120 --location --show-error \
-              --header 'Content-Type: application/json' \
-              --header "Authorization: Bearer $api_token" \
-              --data @deploy_body.json \
-              "$NE_DEPLOY_URL" 2>&1 )
-
-            echo "Dell NativeEdge Deployment API response:"
-            echo "$response"
-
-            if echo "$response" | grep -Eiq 'error|fail|unauthorized|invalid|timeout'; then
-              echo "Deployment trigger failed. See response above."
-              exit 1
-            fi
-
-            echo "Deployment triggered successfully."
-          displayName: 'Authenticate and Trigger Dell NativeEdge Blueprint Deployment'
-          env:
-            NE_CLIENT_ID: $(NE_CLIENT_ID)
-            NE_SECRET_ID: $(NE_SECRET_ID)
-            NE_TOKEN_URL: $(NE_TOKEN_URL)
-            NE_DEPLOY_URL: $(NE_DEPLOY_URL)
-            ACCOUNT_PREFIX: $(ACCOUNT_PREFIX)
-            BLUEPRINT_ID: $(BLUEPRINT_ID)
-            TEAM_NAME: ${{ parameters.TeamName }}
-            NODE_INSTANCE_TYPE: ${{ parameters.NodeInstanceType }}
-            CLUSTER_NUMBER_PREFIX: ${{ parameters.ClusterNumberPrefix }}
-            ENV_SUFFIX: ${{ parameters.EnvSuffix }}
-            ADMIN_NODE_VOLUME_SIZE: ${{ parameters.AdminNodeVolumeSize }}
-            WORKER_NODE_VOLUME_SIZE: ${{ parameters.WorkerNodeVolumeSize }}
-
-
-
-
-
-
-
-trigger: none
-
-pool:
-  name: catos-ubuntu-os
-  demands:
-    agent.name -equals ip-100-127-238-186
-
-name: $(Date:yyyyMMdd).$(Rev:r)
-
-variables:
-  - group: DellNativeEdgeOrchestrator
-  - name: NE_TOKEN_URL
-    value: https://ne-orch.platform.dev.catos.internal.cat.com/rest/v2/api-token
-  - name: NE_DEPLOY_URL
-    value: https://ne-orch.platform.dev.catos.internal.cat.com/rest/v2/deployments
-  - name: BLUEPRINT_ID
-    value: catos-infra-aws-cluster
-  - name: ACCOUNT_PREFIX
-    value: catos
-
-stages:
-- stage: DeployToNativeEdge
-  jobs:
-  - job: Deploy
-    steps:
-    - checkout: none
-
-    - bash: |
-        set -euo pipefail
-
-        echo "Installing jq..."
-        command -v jq >/dev/null || sudo apt-get update && sudo apt-get install -y jq
-
-        echo "Requesting OAuth token..."
-        token_response=$(curl -k -s -X POST "$NE_TOKEN_URL" \
-          -H "Content-Type: application/x-www-form-urlencoded" \
-          --data-urlencode "client_id=$NE_CLIENT_ID" \
-          --data-urlencode "client_secret=$NE_SECRET_ID" \
-          --data-urlencode "grant_type=client_credentials")
-
-        echo "$token_response" | jq .
-
-        TOKEN=$(echo "$token_response" | jq -r '.access_token')
-
-        if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
-          echo "❌ Token retrieval failed"
-          exit 1
-        fi
-
-        echo "Token acquired"
-
-        BUILD=$(Build.BuildNumber)
-        DEPLOYMENT_NAME="catos-${BUILD}"
-        CLUSTER_NAME="cluster-${BUILD}"
-
-        jq -n \
-          --arg blueprint "$BLUEPRINT_ID" \
-          --arg name "$DEPLOYMENT_NAME" \
-          --arg team "devops" \
-          --arg cluster "$CLUSTER_NAME" \
-          --arg env "dev" \
-          --arg node "m5.4xlarge" \
-          --arg admin "t3.medium" \
-          --arg acct "$ACCOUNT_PREFIX" \
-          '{
-            blueprint_id: $blueprint,
-            name: $name,
-            inputs: {
-              team_name: $team,
-              cluster_number: $cluster,
-              environment_suffix: $env,
-              node_instance_type: $node,
-              admin_instance_type: $admin,
-              account_prefix: $acct,
-              admin_node_volume_size_gb: 400,
-              worker_node_volume_size_gb: 400
-            }
-          }' > deploy.json
-
-        echo "Triggering deployment..."
-        response=$(curl -k -s -X POST "$NE_DEPLOY_URL" \
-          -H "Authorization: Bearer $TOKEN" \
-          -H "Content-Type: application/json" \
-          -d @deploy.json)
-
-        echo "$response" | jq .
-
-        if echo "$response" | jq -e '.errors | length > 0' >/dev/null; then
-          echo "❌ NativeEdge returned deployment errors"
-          exit 1
-        fi
-
-        echo "🚀 Blueprint deployment triggered successfully"
-      env:
-        NE_CLIENT_ID: $(NE_CLIENT_ID)
-        NE_SECRET_ID: $(NE_SECRET_ID)
-
+##[error]Bash exited with code '1'.
+Finishing: Bash
