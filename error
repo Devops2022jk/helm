@@ -38,3 +38,96 @@ Requesting OAuth token...
 
 ##[error]Bash exited with code '1'.
 Finishing: Bash
+
+
+
+
+
+
+
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  TOKEN_URL: "https://<YOUR_IAM_HOST>/oauth/token"
+  API_URL: "https://<YOUR_API_ENDPOINT>"
+  SCOPE: "default"
+
+stages:
+- stage: Authenticate
+  displayName: "Authenticate & Get Token"
+  jobs:
+  - job: GetToken
+    displayName: "Retrieve OAuth Token"
+    steps:
+    - task: Bash@3
+      name: fetchToken
+      displayName: "Request OAuth Token (multipart/form-data)"
+      env:
+        CLIENT_ID: $(CLIENT_ID)
+        CLIENT_SECRET: $(CLIENT_SECRET)
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+
+          echo "🔐 Requesting OAuth token..."
+
+          RESPONSE=$(curl -s -X POST "$TOKEN_URL" \
+            -H "Accept: application/json" \
+            -F "grant_type=client_credentials" \
+            -F "client_id=$CLIENT_ID" \
+            -F "client_secret=$CLIENT_SECRET" \
+            -F "scope=$(SCOPE)"
+          )
+
+          echo "Raw response received"
+
+          ACCESS_TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
+
+          if [[ -z "$ACCESS_TOKEN" || "$ACCESS_TOKEN" == "null" ]]; then
+            echo "❌ Token retrieval failed"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+          echo "✅ Token retrieved successfully"
+
+          ## Set token as secret pipeline variable
+          echo "##vso[task.setvariable variable=ACCESS_TOKEN;issecret=true]$ACCESS_TOKEN"
+
+- stage: CallAPI
+  displayName: "Call Protected API"
+  dependsOn: Authenticate
+  jobs:
+  - job: UseToken
+    displayName: "Invoke API with Token"
+    steps:
+    - task: Bash@3
+      displayName: "Call Secured API"
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+
+          echo "🚀 Calling protected API..."
+
+          HTTP_CODE=$(curl -s -o response.json -w "%{http_code}" \
+            -H "Authorization: Bearer $(ACCESS_TOKEN)" \
+            -H "Accept: application/json" \
+            "$API_URL")
+
+          echo "HTTP Status: $HTTP_CODE"
+
+          if [[ "$HTTP_CODE" -ge 400 ]]; then
+            echo "❌ API call failed"
+            cat response.json
+            exit 1
+          fi
+
+          echo "✅ API call successful"
+          cat response.json
+
